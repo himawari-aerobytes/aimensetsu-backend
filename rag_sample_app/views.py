@@ -31,8 +31,14 @@ openai.api_version = aoai_api_version
 openai.api_key = aoai_api_key
 openai.azure_endpoint = f"https://{aoai_resource_name}.openai.azure.com/openai/deployments/{aoai_deployment_name}/chat/completions?api-version={aoai_api_version}"
 class ChatHistoryListCreate(generics.ListCreateAPIView):
-    queryset = ChatHistory.objects.all()
+    # queryset = ChatHistory.objects.all()
+    # リクエストで受け取ったthread_idでフィルターしたチャットの結果を返す
     serializer_class = ChatHistorySerializer
+    def get_queryset(self):
+        # リクエストからthread_idを取得
+        thread_id = self.request.query_params.get('thread_id')
+        # thread_idでフィルターしたチャットの結果を返す
+        return ChatHistory.objects.filter(thread_id=thread_id)
 
 class DocumentList(APIView):
     def get(self, request):
