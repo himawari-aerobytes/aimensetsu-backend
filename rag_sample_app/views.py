@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import generics
-from .models import Document
+from .models import Document,Thread
 from .serializers import DocumentSerializer
 import openai
 import os
@@ -11,6 +11,7 @@ from .serializers import ChatHistorySerializer
 from dotenv import load_dotenv
 from uuid import uuid4
 from rest_framework.decorators import api_view
+import datetime
 
 load_dotenv()
 
@@ -42,7 +43,17 @@ class DocumentList(APIView):
 class OpenAIResponse(APIView):
     def post(self, request):
         search_word = request.data.get("search_word")
+        if search_word is None:
+            return Response({"error": "search_word is required"}, status=400)
         thread_id = request.data.get("thread_id")  # thread_idを取得
+        if thread_id:
+            try:
+                thread = Thread.objects.get(id=thread_id)
+            except Thread.DoesNotExist:
+                return Response({"error": "Thread not found"}, status=404)
+        else:
+            thread = Thread.objects.create()
+            thread_id = str(thread.thread_id)
 
         search_url = f"https://{search_service}.search.windows.net/indexes/{index}/docs"
         headers = {
@@ -72,7 +83,7 @@ class OpenAIResponse(APIView):
             prompt = search_word
 
         # ここでチャット履歴を取得して、messagesリストに追加する
-        chat_history_items = ChatHistory.objects.filter(thread_id=thread_id).order_by('timestamp')
+        chat_history_items = ChatHistory.objects.filter(thread_id=thread).order_by('timestamp')
         messages = [{"role": "system", "content": "あなたは、プログラミングの専門家です。ユーザのエンジニアから、質問を受けて回答してください。プログラミングの質問以外は答えないでください。"}]
         
         for item in chat_history_items:
@@ -90,15 +101,18 @@ class OpenAIResponse(APIView):
         # チャット履歴を保存
         print("#####################")
         print(search_word)
+        print(thread_id)
         print("#####################")
-        chat_history = ChatHistory(user_input=prompt, ai_response=response)
+
+        # チャット履歴を保存
+        chat_history = ChatHistory(thread_id=thread, user_input=prompt, ai_response=response, timestamp=datetime.datetime.now())
         chat_history.save()
+        
+
         print(prompt)
         return Response({"response": response})
 
 @api_view(['POST'])
 def create_new_thread(request):
-    new_uuid = str(uuid4())
-    new_thread = ChatHistory(thread_id=new_uuid)
-    new_thread.save()  # 新しいスレッドIDを保存
-    return Response({'thread_id': new_uuid})  # 新しいスレッドIDをフロントエンドに返す
+    new_thread = Thread.objects.create()
+    return Response({'thread_id': str(new_thread.id)})
