@@ -30,6 +30,17 @@ openai.api_type = "azure"
 openai.api_version = aoai_api_version
 openai.api_key = aoai_api_key
 openai.azure_endpoint = f"https://{aoai_resource_name}.openai.azure.com/openai/deployments/{aoai_deployment_name}/chat/completions?api-version={aoai_api_version}"
+
+def generate_and_save_summary(thread):
+    chat_history_items = ChatHistory.objects.filter(thread_id=thread).order_by('timestamp').reverse()
+
+    # ユーザからの入力を取得
+    user_input = "\n".join([item.user_input for item in chat_history_items])
+    thread.summary = user_input
+    print("以下の内容を要約しました：",user_input)
+    thread.save()
+    return user_input
+
 class ChatHistoryListCreate(generics.ListCreateAPIView):
     # queryset = ChatHistory.objects.all()
     # リクエストで受け取ったthread_idでフィルターしたチャットの結果を返す
@@ -59,7 +70,7 @@ class OpenAIResponse(APIView):
                 return Response({"error": "Thread not found"}, status=404)
         else:
             thread = Thread.objects.create()
-            thread_id = str(thread.thread_id)
+            thread_id = str(thread.id)
 
         search_url = f"https://{search_service}.search.windows.net/indexes/{index}/docs"
         headers = {
@@ -82,9 +93,9 @@ class OpenAIResponse(APIView):
         
         
         if results['value']:
-            combined_content = "\n".join([doc.get('content', 'No content found') for doc in results['value'][:1]])
+            combined_content = "\n".join([doc.get('content', 'No content found') for doc in results['value'][:5]])
             print(combined_content)
-            prompt = f"以下の情報に基づいて質問に答えてください（答えられる情報がない場合は、AIベースの回答をしてください）: {combined_content}"
+            prompt = f"以下の<document>に基づいて質問に答えてください（答えられる情報がない場合は、AIベースの回答をしてください）<document> {combined_content}</document>"
         else:
             prompt = search_word
 
@@ -117,6 +128,37 @@ class OpenAIResponse(APIView):
 
         print(prompt)
         return Response({"response": response})
+    
+class ThreadSummary(APIView):
+    def get(self, request, thread_id):
+        try:
+            thread = Thread.objects.get(id=thread_id)
+        except Thread.DoesNotExist:
+            return Response({"error": "Thread not found"}, status=404)
+
+        if not thread.summary:
+            summary = generate_and_save_summary(thread)
+        else:
+            summary = thread.summary
+
+        return Response({"summary": summary})
+
+class AllThreads(APIView):
+    def get(self, request):
+        threads = Thread.objects.all()
+        thread_data = []
+        for thread in threads:
+            if not thread.summary:
+                summary = generate_and_save_summary(thread)
+            else:
+                summary = thread.summary
+            thread_data.append({
+                "thread_id": str(thread.id),
+                "summary": summary,
+                "created_at": thread.created_at
+            })
+        return Response({"threads": thread_data})
+
 
 @api_view(['POST'])
 def create_new_thread(request):
