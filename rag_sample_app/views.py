@@ -31,6 +31,14 @@ openai.api_version = aoai_api_version
 openai.api_key = aoai_api_key
 openai.azure_endpoint = f"https://{aoai_resource_name}.openai.azure.com/openai/deployments/{aoai_deployment_name}/chat/completions?api-version={aoai_api_version}"
 
+def limit_string_length(strings, max_length):
+    """
+        文字数制限を超えた文字列を切り詰める
+    """
+    if len(strings) > max_length:
+        return strings[:max_length]
+    return strings
+
 def generate_and_save_summary(thread):
     chat_history_items = ChatHistory.objects.filter(thread_id=thread).order_by('timestamp').reverse()
 
@@ -93,7 +101,10 @@ class OpenAIResponse(APIView):
         
         
         if results['value']:
-            combined_content = "\n".join([doc.get('content', 'No content found') for doc in results['value'][:5]])
+            max_length = 1000
+            combined_content = "\n".join([limit_string_length(doc.get('content', 'No content found'),max_length)for doc in results['value'][:1]])
+            #print(combined_content)
+            # インスタンスの種類を確認
             print(combined_content)
             prompt = f"以下の<document>に基づいて質問に答えてください（答えられる情報がない場合は、AIベースの回答をしてください）<document> {combined_content}</document>"
         else:
@@ -101,12 +112,17 @@ class OpenAIResponse(APIView):
 
         # ここでチャット履歴を取得して、messagesリストに追加する
         chat_history_items = ChatHistory.objects.filter(thread_id=thread).order_by('timestamp')
-        messages = [{"role": "system", "content": "あなたは、プログラミングの専門家です。ユーザのエンジニアから、質問を受けて回答してください。プログラミングの質問以外は答えないでください。"}]
+        messages = [{"role": "system", "content": "あなたは、企業の面接官です。面接を受ける人に対して、適切な質問をしてください。最初は自己紹介から始めましょう。"}]
         
+
         for item in chat_history_items:
             messages.append({"role": "user", "content": item.user_input})
             messages.append({"role": "assistant", "content": item.ai_response})
 
+        # search_wordを履歴に追加
+        if search_word != prompt:
+            messages.append({"role": "system", "content": search_word})
+        
         messages.append({"role": "user", "content": prompt})
 
         openai_response = openai.chat.completions.create(
@@ -122,7 +138,7 @@ class OpenAIResponse(APIView):
         print("#####################")
 
         # チャット履歴を保存
-        chat_history = ChatHistory(thread_id=thread, user_input=prompt, ai_response=response, timestamp=datetime.datetime.now())
+        chat_history = ChatHistory(thread_id=thread, user_input=search_word, ai_response=response, timestamp=datetime.datetime.now())
         chat_history.save()
         
 
