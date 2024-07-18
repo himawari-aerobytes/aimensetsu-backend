@@ -10,8 +10,14 @@ from .models import ChatHistory
 from .serializers import ChatHistorySerializer
 from dotenv import load_dotenv
 from uuid import uuid4
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 import datetime
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
+from .serializers import UserSerializer
+from rest_framework import status
 
 load_dotenv()
 
@@ -50,16 +56,27 @@ def generate_and_save_summary(thread):
     return user_input
 
 class ChatHistoryListCreate(generics.ListCreateAPIView):
-    # queryset = ChatHistory.objects.all()
-    # リクエストで受け取ったthread_idでフィルターしたチャットの結果を返す
     serializer_class = ChatHistorySerializer
+    permission_classes = [IsAuthenticated]
+
     def get_queryset(self):
-        # リクエストからthread_idを取得
         thread_id = self.request.query_params.get('thread_id')
-        # thread_idでフィルターしたチャットの結果を返す
-        return ChatHistory.objects.filter(thread_id=thread_id)
+        user = self.request.user
+
+        try:
+            thread = Thread.objects.get(id=thread_id)
+        except Thread.DoesNotExist:
+            return Response({"error": "Thread not found"}, status=404)
+        
+        # スレッドの作成者が現在のユーザーかどうかを確認
+        if thread.creator != user:
+            return Response({"error": "You do not have permission to access this thread"}, status=403)
+        
+        return ChatHistory.objects.filter(thread_id=thread)
+
 
 class DocumentList(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request):
         documents = Document.objects.all()
         serializer = DocumentSerializer(documents, many=True)
@@ -80,6 +97,11 @@ class OpenAIResponse(APIView):
             thread = Thread.objects.create()
             thread_id = str(thread.id)
 
+        user = request.user
+        # スレッドの作成者が現在のユーザーかどうかを確認
+        if thread.creator != user:
+            return Response({"error": "You do not have permission to access this thread"}, status=403)
+        
         search_url = f"https://{search_service}.search.windows.net/indexes/{index}/docs"
         headers = {
             "Content-Type": "application/json",
@@ -101,7 +123,7 @@ class OpenAIResponse(APIView):
         
         
         if results['value']:
-            max_length = 1000
+            max_length = 2000
             combined_content = "\n".join([limit_string_length(doc.get('content', 'No content found'),max_length)for doc in results['value'][:1]])
             #print(combined_content)
             # インスタンスの種類を確認
@@ -177,6 +199,36 @@ class AllThreads(APIView):
 
 
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def create_new_thread(request):
-    new_thread = Thread.objects.create()
+    print(request)
+    user = request.user
+    if not user.is_authenticated:
+        return Response({"error": "User is not authenticated"}, status=403)
+
+    new_thread = Thread.objects.create(creator=user)
     return Response({'thread_id': str(new_thread.id)})
+
+
+class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+
+        # Add custom claims
+        token['username'] = user.username
+        return token
+
+class MyTokenObtainPairView(TokenObtainPairView):
+    serializer_class = MyTokenObtainPairSerializer
+
+class RegisterUser(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = UserSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            if user:
+                return Response(status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
