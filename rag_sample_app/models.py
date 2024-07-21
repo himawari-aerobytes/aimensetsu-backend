@@ -17,6 +17,7 @@ class Thread(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     summary = models.TextField(blank=True, null=True)  # 要約フィールドを追加
     creator = models.ForeignKey(User, on_delete=models.CASCADE)  # 作成者フィールドを追加
+    first_message = models.TextField(blank=True, null=True)  # 初回メッセージフィールドを追加
 class ChatHistory(models.Model):
     thread_id = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name='chats')
     # thread_idのデフォルト値を設定
