@@ -55,6 +55,15 @@ def generate_and_save_summary(thread):
     thread.save()
     return user_input
 
+def get_openai_response(message):
+    messages = [{"role": "system", "content": "あなたは、〇〇の面接官〇〇です。〇〇はランダムに決定してください。面接を受ける人に対して、適切な質問をしてください。最初は自己紹介から始めましょう。"}]
+    messages.append({"role": "user", "content": message})
+    openai_response = openai.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=messages
+    )
+    return openai_response.choices[0].message.content
+
 class ChatHistoryListCreate(generics.ListCreateAPIView):
     serializer_class = ChatHistorySerializer
     permission_classes = [IsAuthenticated]
@@ -140,8 +149,9 @@ class OpenAIResponse(APIView):
 
         # ここでチャット履歴を取得して、messagesリストに追加する
         chat_history_items = ChatHistory.objects.filter(thread_id=thread).order_by('timestamp')
-        messages = [{"role": "system", "content": "あなたは、企業の面接官です。面接を受ける人に対して、適切な質問をしてください。最初は自己紹介から始めましょう。"}]
+        messages = [{"role": "system", "content": "あなたは、企業の面接官です。面接を受ける人に対して、適切な質問をしてください。"}]
         
+        messages.append({"role": "assistant", "content": thread.first_message})
 
         for item in chat_history_items:
             messages.append({"role": "user", "content": item.user_input})
@@ -209,13 +219,14 @@ class AllThreads(APIView):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_new_thread(request):
-    print(request)
     user = request.user
     if not user.is_authenticated:
         return Response({"error": "User is not authenticated"}, status=403)
 
-    new_thread = Thread.objects.create(creator=user)
-    return Response({'thread_id': str(new_thread.id)})
+    response = get_openai_response("こんにちは。面接に来た受験者に挨拶してください。自己紹介を促してください。")
+    new_thread = Thread.objects.create(creator=user, first_message=response)
+    
+    return Response({'thread_id': str(new_thread.id),'response':response})
 
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -257,3 +268,19 @@ class DeleteThread(APIView):
 
         thread.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
+# 初めてのメッセージを返す
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def get_first_message(request,thread_id):
+    user = request.user
+    if not user.is_authenticated:
+        return Response({"error": "User is not authenticated"}, status=403)
+    
+    # thread_idがなければエラーを返す
+    if not thread_id:
+        return Response({"error": "thread_id is required"}, status=400)
+    
+    response = Thread.objects.filter(creator=user,id=thread_id).first().first_message
+
+    return Response({'response':response})
