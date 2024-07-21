@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import DocumentList, OpenAIResponse, ChatHistoryListCreate,create_new_thread, ThreadSummary, AllThreads
+from .views import DocumentList, OpenAIResponse, ChatHistoryListCreate,create_new_thread, ThreadSummary, AllThreads, DeleteThread
 from .views import create_new_thread
 from .views import RegisterUser
 from rest_framework_simplejwt.views import (
@@ -17,6 +17,8 @@ urlpatterns = [
     path('token/', MyTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('register/', RegisterUser.as_view(), name='register'),
+    path('delete-thread/<uuid:thread_id>/', DeleteThread.as_view(), name='delete-thread'),
+
 
 
 ]

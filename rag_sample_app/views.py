@@ -73,6 +73,11 @@ class ChatHistoryListCreate(generics.ListCreateAPIView):
             return Response({"error": "You do not have permission to access this thread"}, status=403)
         
         return ChatHistory.objects.filter(thread_id=thread)
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class DocumentList(APIView):
@@ -83,6 +88,7 @@ class DocumentList(APIView):
         return Response(serializer.data)
 
 class OpenAIResponse(APIView):
+    permission_classes = [IsAuthenticated]
     def post(self, request):
         search_word = request.data.get("search_word")
         if search_word is None:
@@ -168,6 +174,7 @@ class OpenAIResponse(APIView):
         return Response({"response": response})
     
 class ThreadSummary(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request, thread_id):
         try:
             thread = Thread.objects.get(id=thread_id)
@@ -182,8 +189,9 @@ class ThreadSummary(APIView):
         return Response({"summary": summary})
 
 class AllThreads(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request):
-        threads = Thread.objects.all()
+        threads = Thread.objects.filter(creator=request.user)
         thread_data = []
         for thread in threads:
             if not thread.summary:
@@ -232,3 +240,20 @@ class RegisterUser(APIView):
             if user:
                 return Response(status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+class DeleteThread(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, thread_id):
+        try:
+            thread = Thread.objects.get(id=thread_id)
+        except Thread.DoesNotExist:
+            return Response({"error": "Thread not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # スレッドの作成者が現在のユーザーかどうかを確認
+        if thread.creator != request.user:
+            return Response({"error": "You do not have permission to delete this thread"}, status=status.HTTP_403_FORBIDDEN)
+
+        thread.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
