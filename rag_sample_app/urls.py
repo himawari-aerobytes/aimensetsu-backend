@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import DocumentList, OpenAIResponse, ChatHistoryListCreate,create_new_thread, ThreadSummary, AllThreads, DeleteThread,get_first_message
+from .views import DocumentList, OpenAIResponse, ChatHistoryListCreate,create_new_thread, ThreadSummary, AllThreads, DeleteThread,get_first_message,LogoutView
 from .views import create_new_thread
 from .views import RegisterUser
 from rest_framework_simplejwt.views import (
@@ -18,7 +18,8 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('register/', RegisterUser.as_view(), name='register'),
     path('delete-thread/<uuid:thread_id>/', DeleteThread.as_view(), name='delete-thread'),
-    path('first-message/<uuid:thread_id>/', get_first_message, name='get-first-message')
+    path('first-message/<uuid:thread_id>/', get_first_message, name='get-first-message'),
+    path('logout/', LogoutView.as_view(), name='logout'),
 
 
 

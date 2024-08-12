@@ -2,6 +2,7 @@ from django.db import models
 from django.apps import AppConfig
 import uuid  # uuidモジュールをインポート
 from django.contrib.auth.models import User
+from django.contrib.auth.models import AbstractBaseUser
 
 class Document(models.Model):
     content = models.TextField()
@@ -21,12 +22,15 @@ class Thread(models.Model):
 class ChatHistory(models.Model):
     thread_id = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name='chats')
     # thread_idのデフォルト値を設定
-
-    user_input = models.TextField()
-    ai_response = models.TextField()
+    message = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
+    sender = models.TextField()
 
     def __str__(self):
-        return f"Thread {self.thread_id} - {self.user_input[:50]}"
+        return f"Thread {self.thread_id} - {self.message[:50]}"
+    
+class User(AbstractBaseUser):
+    email = models.EmailField(unique=True)
+    USERNAME_FIELD = 'email'
     
 
