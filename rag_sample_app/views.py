@@ -18,6 +18,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import AllowAny
 from .serializers import UserSerializer
 from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model
+from django.core.mail import send_mail
+from django.views import View
+from django.http import HttpResponse
 
 load_dotenv()
 
@@ -30,6 +35,7 @@ aoai_service_name = os.getenv("OPENAI_RESOURCE_NAME")
 aoai_deployment_name = os.getenv("OPENAI_DEPLOYMENT_NAME")
 aoai_resource_name=os.environ.get("OPENAI_RESOURCE_NAME")
 aoai_api_version = os.getenv("OPENAI_API_VERSION")
+SENDER_NAME_AI="AI"
 
 # OpenAI APIの設定
 openai.api_type = "azure"
@@ -46,17 +52,17 @@ def limit_string_length(strings, max_length):
     return strings
 
 def generate_and_save_summary(thread):
-    chat_history_items = ChatHistory.objects.filter(thread_id=thread).order_by('timestamp').reverse()
+    chat_history_items = ChatHistory.objects.filter(thread_id=thread).exclude(sender=SENDER_NAME_AI).order_by('timestamp').reverse()
 
     # ユーザからの入力を取得
-    user_input = "\n".join([item.user_input for item in chat_history_items])
+    user_input = "\n".join([item.message for item in chat_history_items])
     thread.summary = user_input
     print("以下の内容を要約しました：",user_input)
     thread.save()
     return user_input
 
 def get_openai_response(message):
-    messages = [{"role": "system", "content": "あなたは、〇〇の面接官〇〇です。〇〇はランダムに決定してください。面接を受ける人に対して、適切な質問をしてください。最初は自己紹介から始めましょう。"}]
+    messages = [{"role": "system", "content": "あなたは、面接官の高橋です。面接を受ける人に対して、適切な質問をしてください。面接は１対１です。最初は自己紹介から始めましょう。"}]
     messages.append({"role": "user", "content": message})
     openai_response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -154,8 +160,10 @@ class OpenAIResponse(APIView):
         messages.append({"role": "assistant", "content": thread.first_message})
 
         for item in chat_history_items:
-            messages.append({"role": "user", "content": item.user_input})
-            messages.append({"role": "assistant", "content": item.ai_response})
+            if item.sender == "USER":
+                messages.append({"role": "user", "content": item.message})
+            elif item.sender == "AI":
+                messages.append({"role": "assistant", "content": item.message})
 
         # search_wordを履歴に追加
         if search_word != prompt:
@@ -176,9 +184,10 @@ class OpenAIResponse(APIView):
         print("#####################")
 
         # チャット履歴を保存
-        chat_history = ChatHistory(thread_id=thread, user_input=search_word, ai_response=response, timestamp=datetime.datetime.now())
-        chat_history.save()
-        
+        user_input = ChatHistory(thread_id=thread, message=search_word,timestamp=datetime.datetime.now(),sender="USER")
+        user_input.save()
+        ai_input = ChatHistory(thread_id=thread, message=response,timestamp=datetime.datetime.now(),sender="AI")
+        ai_input.save()
 
         print(prompt)
         return Response({"response": response})
@@ -284,3 +293,45 @@ def get_first_message(request,thread_id):
     response = Thread.objects.filter(creator=user,id=thread_id).first().first_message
 
     return Response({'response':response})
+
+class LogoutView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request):
+        try:
+            refresh_token = request.data["refresh_token"]
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+
+            return Response(status=status.HTTP_205_RESET_CONTENT)
+        except Exception as e:
+            print(e)
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        
+class RegisterView(View):
+    def post(self, request, *args, **kwargs):
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        user = get_user_model().objects.create_user(email=email, password=password)
+        user.is_active = False  # ユーザーを非アクティブに設定
+        user.save()
+
+        # 確認メールの送信
+        send_mail(
+            'Confirm your email',
+            'Here is the link to confirm your email.',
+            'from@example.com',
+            [email],
+            fail_silently=False,
+        )
+
+        return HttpResponse("Please confirm your email to complete registration.")
+    
+class EmailConfirmView(View):
+    def get(self, request, *args, **kwargs):
+        user_id = kwargs.get('user_id')
+        user = get_user_model().objects.get(id=user_id)
+        user.is_active = True
+        user.save()
+        return HttpResponse("Your email has been confirmed, and your account is now active.")
+
