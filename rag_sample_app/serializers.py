@@ -11,7 +11,7 @@ class DocumentSerializer(serializers.ModelSerializer):
 class ChatHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatHistory
-        fields = ['id', 'thread_id', 'user_input', 'ai_response', 'timestamp']
+        fields = ['id', 'thread_id', 'message', 'sender', 'timestamp']
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
