@@ -24,7 +24,12 @@ from django.core.mail import send_mail
 from django.views import View
 from django.http import HttpResponse
 
-load_dotenv()
+# 開発環境か本番環境かに応じてファイルを指定
+environment = os.getenv('ENV', 'development')
+if environment == 'production':
+    load_dotenv('.env.production')
+else:
+    load_dotenv('.env.development')
 
 # 環境変数の取得
 api_key = os.getenv("API_KEY")
