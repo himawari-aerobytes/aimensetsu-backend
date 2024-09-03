@@ -15,7 +15,12 @@ import datetime
 # dotenvを使用するための設定を追加
 from dotenv import load_dotenv
 import os
-load_dotenv()
+# 開発環境か本番環境かに応じてファイルを指定
+environment = os.getenv('ENV', 'development')
+if environment == 'production':
+    load_dotenv('.env.production')
+else:
+    load_dotenv('.env.development')
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -111,8 +116,12 @@ WSGI_APPLICATION = 'rag_sample_django.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'dFb.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.environ["DB_NAME"],
+        'USER': os.environ["DB_USER"],
+        'PASSWORD':os.environ["DB_PASSWORD"],
+        'HOST':os.environ["DB_HOST"],
+        'PORT':'3306'
     }
 }
 
@@ -160,15 +169,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORSの設定を追加
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000"
+    os.environ.get('CORS_DOMAIN')
 ]
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.environ["MAIL_ADDRESS"]
-EMAIL_HOST_PASSWORD = os.environ["MAIL_PASS"]
-
-# CORS_ORIGIN_ALLOW_ALL = True
 
