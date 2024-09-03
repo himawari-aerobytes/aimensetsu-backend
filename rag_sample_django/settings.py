@@ -169,7 +169,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORSの設定を追加
 CORS_ALLOWED_ORIGINS = [
-    os.environ.get('CORS_DOMAIN')
+    os.environ['CORS_DOMAIN']
 ]
 
 
