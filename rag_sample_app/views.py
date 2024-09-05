@@ -23,6 +23,8 @@ from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 from django.views import View
 from django.http import HttpResponse
+from .utils import jwt_required  # utils.pyからデコレータをインポート
+from django.utils.decorators import method_decorator
 
 # 開発環境か本番環境かに応じてファイルを指定
 environment = os.getenv('ENV', 'development')
@@ -62,7 +64,6 @@ def generate_and_save_summary(thread):
     # ユーザからの入力を取得
     user_input = "\n".join([item.message for item in chat_history_items])
     thread.summary = user_input
-    print("以下の内容を要約しました：",user_input)
     thread.save()
     return user_input
 
@@ -77,8 +78,12 @@ def get_openai_response(message):
 
 class ChatHistoryListCreate(generics.ListCreateAPIView):
     serializer_class = ChatHistorySerializer
-    permission_classes = [IsAuthenticated]
 
+    # dispatchメソッドにデコレータを適用
+    @method_decorator(jwt_required)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+    
     def get_queryset(self):
         thread_id = self.request.query_params.get('thread_id')
         user = self.request.user
@@ -101,14 +106,16 @@ class ChatHistoryListCreate(generics.ListCreateAPIView):
 
 
 class DocumentList(APIView):
-    permission_classes = [IsAuthenticated]
+    
+    @method_decorator(jwt_required)
     def get(self, request):
         documents = Document.objects.all()
         serializer = DocumentSerializer(documents, many=True)
         return Response(serializer.data)
 
 class OpenAIResponse(APIView):
-    permission_classes = [IsAuthenticated]
+    
+    @method_decorator(jwt_required)
     def post(self, request):
         search_word = request.data.get("search_word")
         if search_word is None:
@@ -151,9 +158,6 @@ class OpenAIResponse(APIView):
         if results['value']:
             max_length = 2000
             combined_content = "\n".join([limit_string_length(doc.get('content', 'No content found'),max_length)for doc in results['value'][:1]])
-            #print(combined_content)
-            # インスタンスの種類を確認
-            print(combined_content)
             prompt = f"以下の<document>に基づいて質問に答えてください（答えられる情報がない場合は、AIベースの回答をしてください）<document> {combined_content}</document>"
         else:
             prompt = search_word
@@ -182,23 +186,17 @@ class OpenAIResponse(APIView):
         )
         
         response = openai_response.choices[0].message.content
-        # チャット履歴を保存
-        print("#####################")
-        print(search_word)
-        print(thread_id)
-        print("#####################")
 
         # チャット履歴を保存
         user_input = ChatHistory(thread_id=thread, message=search_word,timestamp=datetime.datetime.now(),sender="USER")
         user_input.save()
         ai_input = ChatHistory(thread_id=thread, message=response,timestamp=datetime.datetime.now(),sender="AI")
         ai_input.save()
-
-        print(prompt)
         return Response({"response": response})
     
 class ThreadSummary(APIView):
-    permission_classes = [IsAuthenticated]
+    
+    @method_decorator(jwt_required)
     def get(self, request, thread_id):
         try:
             thread = Thread.objects.get(id=thread_id)
@@ -213,9 +211,10 @@ class ThreadSummary(APIView):
         return Response({"summary": summary})
 
 class AllThreads(APIView):
-    permission_classes = [IsAuthenticated]
+    
+    @method_decorator(jwt_required)
     def get(self, request):
-        threads = Thread.objects.filter(creator=request.user)
+        threads = Thread.objects.filter(creator=request.user).order_by('-created_at')
         thread_data = []
         for thread in threads:
             if not thread.summary:
@@ -227,11 +226,12 @@ class AllThreads(APIView):
                 "summary": summary,
                 "created_at": thread.created_at
             })
+        
         return Response({"threads": thread_data})
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@jwt_required
 def create_new_thread(request):
     user = request.user
     if not user.is_authenticated:
@@ -268,8 +268,8 @@ class RegisterUser(APIView):
     
 
 class DeleteThread(APIView):
-    permission_classes = [IsAuthenticated]
 
+    @method_decorator(jwt_required)
     def delete(self, request, thread_id):
         try:
             thread = Thread.objects.get(id=thread_id)
@@ -285,7 +285,7 @@ class DeleteThread(APIView):
     
 # 初めてのメッセージを返す
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@jwt_required
 def get_first_message(request,thread_id):
     user = request.user
     if not user.is_authenticated:
@@ -302,6 +302,7 @@ def get_first_message(request,thread_id):
 class LogoutView(APIView):
     permission_classes = (IsAuthenticated,)
 
+    @method_decorator(jwt_required)
     def post(self, request):
         try:
             refresh_token = request.data["refresh_token"]
@@ -313,30 +314,4 @@ class LogoutView(APIView):
             print(e)
             return Response(status=status.HTTP_400_BAD_REQUEST)
         
-class RegisterView(View):
-    def post(self, request, *args, **kwargs):
-        email = request.POST.get('email')
-        password = request.POST.get('password')
-        user = get_user_model().objects.create_user(email=email, password=password)
-        user.is_active = False  # ユーザーを非アクティブに設定
-        user.save()
-
-        # 確認メールの送信
-        send_mail(
-            'Confirm your email',
-            'Here is the link to confirm your email.',
-            'from@example.com',
-            [email],
-            fail_silently=False,
-        )
-
-        return HttpResponse("Please confirm your email to complete registration.")
-    
-class EmailConfirmView(View):
-    def get(self, request, *args, **kwargs):
-        user_id = kwargs.get('user_id')
-        user = get_user_model().objects.get(id=user_id)
-        user.is_active = True
-        user.save()
-        return HttpResponse("Your email has been confirmed, and your account is now active.")
 
