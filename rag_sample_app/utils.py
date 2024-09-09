@@ -42,7 +42,7 @@ def jwt_required(view_func):
         try:
             token_type, token = auth_header.split()
             if token_type.lower() != 'bearer':
-                raise ValueError('Invalid token type')
+                return JsonResponse({'error': 'Invalid token type'}, status=401)
         except ValueError:
             return JsonResponse({'error': 'Invalid Authorization header format'}, status=401)
 
