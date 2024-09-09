@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import jwt
 from django.contrib.auth import get_user_model
+from django.db import DatabaseError, IntegrityError
 from django.http import JsonResponse
 from django.test import RequestFactory, TestCase
 
@@ -84,7 +85,7 @@ class JWTRequiredDecoratorTest(TestCase):
             "cognito:username": "testuser",
             "email": "testuser@example.com",
         }
-        mock_get_cognito_public_keys.return_value = {"kid": "mocked_public_key"}
+        mock_get_cognito_public_keys.return_value = {"1234example=": "test"}
 
         request = self.factory.get(
             "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + SAMPLE_TOKEN
@@ -95,6 +96,9 @@ class JWTRequiredDecoratorTest(TestCase):
 
         # デコレータ適用後のレスポンス
         response = jwt_required(lambda r: JsonResponse({"success": "True"}))(request)
+
+        # モックが正しく呼ばれたか確認
+        mock_jwt_decode.assert_called_once()
 
         # ユーザーが作成されていることの確認
         self.assertEqual(User.objects.filter(username="testuser").count(), 1)
@@ -114,7 +118,7 @@ class JWTRequiredDecoratorTest(TestCase):
             "cognito:username": "existinguser",
             "email": "existinguser@example.com",
         }
-        mock_get_cognito_public_keys.return_value = {"kid": "mocked_public_key"}
+        mock_get_cognito_public_keys.return_value = {"1234example=": "test"}
 
         # 既存ユーザーを作成
         user = User.objects.create(
@@ -135,3 +139,69 @@ class JWTRequiredDecoratorTest(TestCase):
         self.assertEqual(response.status_code, 200)
         response_data = json.loads(response.content)
         self.assertEqual(response_data, {"success": "True"})
+
+    @patch("rag_sample_app.utils.get_cognito_public_keys")
+    @patch("rag_sample_app.utils.jwt.decode")
+    def test_public_key_not_found(self, mock_jwt_decode, mock_get_cognito_public_keys):
+        # モックのCognitoのパブリックキーとJWTデコードの戻り値を設定
+        mock_jwt_decode.return_value = {
+            "cognito:username": "testuser",
+            "email": "testuser@example.com",
+        }
+
+        # JWTと異なるキーを返す。
+        mock_get_cognito_public_keys.return_value = {"invalid_key": "test"}
+
+        request = self.factory.get(
+            "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + SAMPLE_TOKEN
+        )
+
+        # 初期ユーザーデータの存在確認
+        self.assertEqual(User.objects.filter(username="testuser").count(), 0)
+
+        # デコレータ適用後のレスポンス
+        response = jwt_required(lambda r: JsonResponse({"success": "True"}))(request)
+
+        # モックが呼ばれていないことを確認
+        mock_jwt_decode.assert_not_called()
+
+        # ユーザーが作成されていないことを確認
+        self.assertEqual(User.objects.filter(username="testuser").count(), 0)
+
+        # レスポンスの確認
+        self.assertEqual(response.status_code, 401)
+        response_data = json.loads(response.content)
+        self.assertEqual(response_data, {"error": "Public key not found"})
+
+    @patch("rag_sample_app.utils.get_cognito_public_keys")
+    @patch("rag_sample_app.utils.jwt.decode")
+    @patch("django.contrib.auth.get_user_model")
+    def test_error_creating_user(
+        self, mock_get_user_model, mock_jwt_decode, mock_get_cognito_public_keys
+    ):
+        # モックのJWTデコードの戻り値を設定
+        mock_jwt_decode.return_value = {
+            "cognito:username": "testuser",
+            "email": "testuser@example.com",
+        }
+        mock_get_cognito_public_keys.return_value = {"1234example=": "public_key"}
+
+        with patch.object(User.objects, "get_or_create") as mock_method:
+            mock_method.side_effect = IntegrityError()
+
+            # リクエストを作成
+            request = self.factory.get(
+                "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + SAMPLE_TOKEN
+            )
+
+            # デコレータ適用後のレスポンスを取得
+            response = jwt_required(lambda r: JsonResponse({"success": "True"}))(
+                request
+            )
+
+            # レスポンスのステータスコードと内容を確認
+            self.assertEqual(response.status_code, 500)
+            response_data = json.loads(response.content)
+            self.assertEqual(
+                response_data, {"error": "Error creating or retrieving user"}
+            )
