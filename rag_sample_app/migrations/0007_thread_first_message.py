@@ -6,13 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('rag_sample_app', '0006_thread_creator'),
+        ("rag_sample_app", "0006_thread_creator"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='thread',
-            name='first_message',
+            model_name="thread",
+            name="first_message",
             field=models.TextField(blank=True, null=True),
         ),
     ]
