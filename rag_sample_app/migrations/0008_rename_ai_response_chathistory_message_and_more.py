@@ -6,23 +6,23 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('rag_sample_app', '0007_thread_first_message'),
+        ("rag_sample_app", "0007_thread_first_message"),
     ]
 
     operations = [
         migrations.RenameField(
-            model_name='chathistory',
-            old_name='ai_response',
-            new_name='message',
+            model_name="chathistory",
+            old_name="ai_response",
+            new_name="message",
         ),
         migrations.RemoveField(
-            model_name='chathistory',
-            name='user_input',
+            model_name="chathistory",
+            name="user_input",
         ),
         migrations.AddField(
-            model_name='chathistory',
-            name='sender',
-            field=models.TextField(default='AI'),
+            model_name="chathistory",
+            name="sender",
+            field=models.TextField(default="AI"),
             preserve_default=False,
         ),
     ]
