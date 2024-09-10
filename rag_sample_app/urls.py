@@ -27,7 +27,7 @@ urlpatterns = [
     path(
         "thread-summary/<str:thread_id>/",
         ThreadSummary.as_view(),
-        name="thread_summary",
+        name="thread-summary",
     ),
     path("all-threads/", AllThreads.as_view(), name="all_threads"),
     path("token/", MyTokenObtainPairView.as_view(), name="token_obtain_pair"),
