@@ -1,17 +1,39 @@
 import json  # 追加
-from unittest.mock import MagicMock, patch
+import os
+from unittest.mock import MagicMock, Mock, patch
 
 import jwt
 from django.contrib.auth import get_user_model
 from django.db import DatabaseError, IntegrityError
 from django.http import JsonResponse
 from django.test import RequestFactory, TestCase
+from dotenv import load_dotenv
 
-from rag_sample_app.utils import get_cognito_public_keys, jwt_required
+from rag_sample_app.utils import get_cognito_public_keys, jwt_required, load_environment
 
 User = get_user_model()
 
 SAMPLE_TOKEN = "eyJraWQiOiIxMjM0ZXhhbXBsZT0iLCJhbGciOiJSUzI1NiIsImt0eSI6IlJTQSIsImUiOiJBUUFCIiwibiI6IjEyMzQ1Njc4OTAiLCJ1c2UiOiJzaWcifQ.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.qpldgWTqr6dA_vZCZcmnJgV7JPanhBzEloQA9CQuyLMLfi9u1T0y8Kr6uK4j-WiDHvqtzo5zoFBuwqO-o1adnAnTKmqKj2RHU3bXqXKtawLkMC-E_cwGrr_XBQQSMnfw8OX2C8tFr5nxr1Bi8KD2G4T4_9pqv6fz3STDTPeMOSZ-kx-p2lJYJVexxPfSg1j69Yc5Jd6nT7eJakzu09CTwcBdlKMGMgfKjzuUPWWc9gnO21PQgYPTP8UAohM_mvNyejYRlrluJBrG01faOj_WMpLR2rv9tg0s-HdjoR3FGlmMnJnssu3v5YF1wnPS2HPNaAZuu_12NDR5BjH_ulOiXA"  # gitleaks:allow
+JWKS_MOCK_RESPONSE = {
+    "keys": [
+        {
+            "kid": "test_kid_1",
+            "kty": "RSA",
+            "alg": "RS256",
+            "use": "sig",
+            "n": "test_n_value",
+            "e": "AQAB",
+        },
+        {
+            "kid": "test_kid_2",
+            "kty": "RSA",
+            "alg": "RS256",
+            "use": "sig",
+            "n": "another_n_value",
+            "e": "AQAB",
+        },
+    ]
+}
 
 
 class JWTRequiredDecoratorTest(TestCase):
@@ -205,3 +227,52 @@ class JWTRequiredDecoratorTest(TestCase):
             self.assertEqual(
                 response_data, {"error": "Error creating or retrieving user"}
             )
+
+    @patch("rag_sample_app.utils.requests.get")
+    def test_get_cognito_public_keys(self, mock_requests_get):
+        mock_response = Mock()
+        mock_response.json.return_value = JWKS_MOCK_RESPONSE
+        mock_requests_get.return_value = mock_response
+        keys = get_cognito_public_keys()
+
+        # 結果の確認
+        self.assertIn("test_kid_1", keys)
+        self.assertIn("test_kid_2", keys)
+        self.assertEqual(len(keys), 2)
+
+    # 環境変数のテスト
+    @patch("os.getenv")
+    @patch("rag_sample_app.utils.load_dotenv")
+    def test_load_production_env(self, mock_load_dotenv, mock_getenv):
+        # ENVが"production"であることをシミュレート
+        mock_getenv.return_value = "production"
+
+        # テスト対象のコードを実行
+        load_environment()
+
+        # 正しいファイルが読み込まれたか確認
+        mock_load_dotenv.assert_called_once_with(".env.production")
+
+    @patch("os.getenv")
+    @patch("rag_sample_app.utils.load_dotenv")
+    def test_load_development_env(self, mock_load_dotenv, mock_getenv):
+        # ENVが設定されていない（デフォルトは "development"）
+        mock_getenv.return_value = None
+
+        # テスト対象のコードを実行
+        load_environment()
+
+        # 正しいファイルが読み込まれたか確認
+        mock_load_dotenv.assert_called_once_with(".env.development")
+
+    @patch("os.getenv")
+    @patch("rag_sample_app.utils.load_dotenv")
+    def test_load_staging_env(self, mock_load_dotenv, mock_getenv):
+        # ENVが"staging"であることをシミュレート
+        mock_getenv.return_value = "staging"
+
+        # テスト対象のコードを実行
+        load_environment()
+
+        # 正しいファイルが読み込まれたか確認
+        mock_load_dotenv.assert_called_once_with(".env.development")
