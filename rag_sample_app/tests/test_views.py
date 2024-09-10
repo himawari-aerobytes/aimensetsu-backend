@@ -1,8 +1,9 @@
 from functools import wraps
 from unittest import mock
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -10,6 +11,7 @@ from rest_framework.test import APITestCase
 from rag_sample_app.models import Document, Thread
 
 
+# JWT 認証用デコレータモック
 def _mock_jwt_required(view_func):
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
@@ -18,7 +20,13 @@ def _mock_jwt_required(view_func):
     return _wrapped_view
 
 
+# jwt_requiredを書き換えるために、Viewsを読み込む前にmock化をする
 mock.patch("rag_sample_app.utils.jwt_required", _mock_jwt_required).start()
+from rag_sample_app.views import (
+    generate_and_save_summary,
+    get_openai_response,
+    limit_string_length,
+)
 
 
 class APITestBase(APITestCase):
@@ -142,3 +150,106 @@ class GetFirstMessageTest(APITestBase):
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("response", response.data)
+
+
+class LimitStringLengthTest(SimpleTestCase):
+
+    def test_string_exceeds_max_length(self):
+        # max_length を超える場合
+        input_string = "This is a long string."
+        max_length = 10
+        expected_output = "This is a "  # 10文字目まで切り詰められる
+        result = limit_string_length(input_string, max_length)
+        self.assertEqual(result, expected_output)
+
+    def test_string_equal_to_max_length(self):
+        # 文字列がちょうど max_length の場合
+        input_string = "1234567890"
+        max_length = 10
+        expected_output = "1234567890"  # そのまま返される
+        result = limit_string_length(input_string, max_length)
+        self.assertEqual(result, expected_output)
+
+    def test_string_less_than_max_length(self):
+        # 文字列が max_length より短い場合
+        input_string = "short"
+        max_length = 10
+        expected_output = "short"  # そのまま返される
+        result = limit_string_length(input_string, max_length)
+        self.assertEqual(result, expected_output)
+
+    def test_empty_string(self):
+        # 空文字列のテスト
+        input_string = ""
+        max_length = 10
+        expected_output = ""  # 空文字列のまま返される
+        result = limit_string_length(input_string, max_length)
+        self.assertEqual(result, expected_output)
+
+
+class GenerateAndSaveSummaryTest(TestCase):
+
+    @patch("rag_sample_app.views.ChatHistory.objects.filter")
+    def test_generate_and_save_summary(self, mock_filter):
+        # モックオブジェクトの設定
+        thread = MagicMock()  # モックの Thread インスタンスを作成
+        mock_chat_history = [
+            MagicMock(message="Hello world"),
+            MagicMock(message="How are you?"),
+            MagicMock(message="Goodbye"),
+        ]
+
+        # filter の返り値に exclude, order_by, reverse メソッドチェーンを適用する
+        mock_filter.return_value.exclude.return_value.order_by.return_value.reverse.return_value = (
+            mock_chat_history
+        )
+
+        # 関数の呼び出し
+        result = generate_and_save_summary(thread)
+
+        # 期待される結果
+        expected_summary = "Hello world\nHow are you?\nGoodbye"
+
+        # アサーション
+        self.assertEqual(result, expected_summary)
+        self.assertEqual(thread.summary, expected_summary)
+        thread.save.assert_called_once()  # thread.save() が1回呼ばれたことを確認
+
+        # モックが正しく呼ばれたことを確認
+        mock_filter.assert_called_once_with(thread_id=thread)
+        mock_filter.return_value.exclude.assert_called_once_with(sender="AI")
+        mock_filter.return_value.exclude.return_value.order_by.assert_called_once_with(
+            "timestamp"
+        )
+        mock_filter.return_value.exclude.return_value.order_by.return_value.reverse.assert_called_once()
+
+
+class GetOpenAIResponseTest(SimpleTestCase):
+
+    @patch("rag_sample_app.views.openai.chat.completions.create")
+    def test_get_openai_response(self, mock_openai_create):
+        # モックのレスポンスを設定
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = "AI response"
+        mock_openai_create.return_value = mock_response
+
+        # テスト用のメッセージを送信
+        user_message = "こんにちは、自己紹介をしてください。"
+        result = get_openai_response(user_message)
+
+        # 期待されるリクエスト内容
+        expected_messages = [
+            {
+                "role": "system",
+                "content": "あなたは、面接官の高橋です。面接を受ける人に対して、適切な質問をしてください。面接は１対１です。最初は自己紹介から始めましょう。",
+            },
+            {"role": "user", "content": user_message},
+        ]
+
+        # モックの呼び出しを検証
+        mock_openai_create.assert_called_once_with(
+            model="gpt-3.5-turbo", messages=expected_messages
+        )
+
+        # 関数の結果がモックされたレスポンスと一致するか確認
+        self.assertEqual(result, "AI response")
