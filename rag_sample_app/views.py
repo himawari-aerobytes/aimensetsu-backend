@@ -282,7 +282,10 @@ def create_new_thread(request):
     )
     new_thread = Thread.objects.create(creator=user, first_message=response)
 
-    return Response({"thread_id": str(new_thread.id), "response": response})
+    return Response(
+        {"thread_id": str(new_thread.id), "response": response},
+        status=status.HTTP_201_CREATED,
+    )
 
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
