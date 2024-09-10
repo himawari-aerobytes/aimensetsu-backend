@@ -9,12 +9,15 @@ from django.http import JsonResponse
 from dotenv import load_dotenv
 from jwt.algorithms import RSAAlgorithm
 
+
 # 開発環境か本番環境かに応じてファイルを指定
-environment = os.getenv("ENV", "development")
-if environment == "production":
-    load_dotenv(".env.production")
-else:
-    load_dotenv(".env.development")
+def load_environment():
+    environment = os.getenv("ENV", "development")
+    if environment == "production":
+        load_dotenv(".env.production")
+    else:
+        load_dotenv(".env.development")
+
 
 User = get_user_model()  # Djangoのユーザーモデルを取得
 
@@ -41,6 +44,7 @@ def get_cognito_public_keys():
 def jwt_required(view_func):
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
+        load_environment()
         auth_header = request.META.get("HTTP_AUTHORIZATION", None)
         if not auth_header:
             return JsonResponse({"error": "Authorization header missing"}, status=401)
