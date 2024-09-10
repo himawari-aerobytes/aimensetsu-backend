@@ -1,23 +1,18 @@
 import datetime
 import os
-from uuid import uuid4
 
 import openai
 import requests
-from django.contrib.auth import get_user_model
-from django.core.mail import send_mail
-from django.http import HttpResponse
 from django.utils.decorators import method_decorator
-from django.views import View
 from dotenv import load_dotenv
 from rest_framework import generics, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import ChatHistory, Document, Thread
 from .serializers import ChatHistorySerializer, DocumentSerializer, UserSerializer
@@ -57,6 +52,7 @@ def limit_string_length(strings, max_length):
     return strings
 
 
+# 最新のユーザからのチャットを１行で取得する
 def generate_and_save_summary(thread):
     chat_history_items = (
         ChatHistory.objects.filter(thread_id=thread)
