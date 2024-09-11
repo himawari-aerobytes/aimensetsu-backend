@@ -10,6 +10,8 @@ from rest_framework.test import APITestCase
 
 from rag_sample_app.models import Document, Thread
 
+DUMMY_THREAD_ID = "e554463c-05e3-e0a1-60fe-8f1805a223eb"  # gitleaks:allow
+
 
 # JWT 認証用デコレータモック
 def _mock_jwt_required(view_func):
@@ -41,12 +43,14 @@ class ChatHistoryListCreateTest(APITestBase):
         self.thread = Thread.objects.create(creator=self.user)
 
     def test_get_chat_history(self):
-        url = reverse("chat-history-list-create")
+        """チャット履歴の取得が正常に行われることを確認するテスト"""
+        url = reverse("chat-history-list")
         response = self.client.get(url, {"thread_id": self.thread.id})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_post_chat_history(self):
-        url = reverse("chat-history-list-create")
+        """チャット履歴が正常に作成されることを確認するテスト"""
+        url = reverse("chat-history-list")
         data = {
             "thread_id": self.thread.id,
             "message": "Hello world",
@@ -55,6 +59,16 @@ class ChatHistoryListCreateTest(APITestBase):
         response = self.client.post(url, data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
+    def test_get_chat_history_thread_not_found(self):
+        """スレッドが存在しない場合、404エラーを返すテスト"""
+        url = reverse("chat-history-list")  # 適切なURL名に置き換えてください
+        response = self.client.get(
+            url, {"thread_id": DUMMY_THREAD_ID}
+        )  # 存在しないスレッドID
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data, {"error": "Thread not found"})
+
 
 class DocumentListTest(APITestBase):
     def setUp(self):
@@ -62,6 +76,7 @@ class DocumentListTest(APITestBase):
         self.document = Document.objects.create(content="Doc Content")
 
     def test_get_documents(self):
+        """ドキュメントリストが正常に取得されることを確認するテスト"""
         url = reverse("document-list")
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -76,7 +91,8 @@ class OpenAIResponseTest(APITestBase):
     @patch("requests.get")
     @patch("openai.chat.completions.create")
     def test_post_openai_response(self, mock_openai, mock_requests):
-        mock_requests.return_value.status_code = 200
+        """OpenAIのAPI呼び出しとレスポンスが正常に動作することを確認するテスト"""
+        mock_requests.return_value.status_code = status.HTTP_200_OK
         mock_requests.return_value.json.return_value = {
             "value": [{"content": "doc content"}]
         }
@@ -84,6 +100,45 @@ class OpenAIResponseTest(APITestBase):
 
         url = reverse("openai-response")
         data = {"search_word": "search", "thread_id": self.thread.id}
+        response = self.client.post(url, data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("response", response.data)
+
+    def test_post_openai_response_search_word_missing(self):
+        """search_wordが指定されていない場合に正しく400エラーが返されることを確認するテスト"""
+        url = reverse("openai-response")
+        # search_word空
+        data = {"thread_id": self.thread.id}
+        response = self.client.post(url, data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data, {"error": "search_word is required"})
+
+    def test_post_openai_response_thread_not_found(self):
+        """指定されたスレッドが見つからない場合に正しく404エラーが返されることを確認するテスト"""
+        url = reverse("openai-response")
+        # search_word空
+        data = {"search_word": "search", "thread_id": DUMMY_THREAD_ID}
+        response = self.client.post(url, data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.data, {"error": "Thread not found"})
+
+    @patch("requests.get")
+    @patch("openai.chat.completions.create")
+    def test_post_openai_response_does_not_exist_thread_id(
+        self, mock_openai, mock_requests
+    ):
+        """OpenAIのAPI呼び出しとレスポンスが正常に動作することを確認するテスト(thread_idなし)"""
+        mock_requests.return_value.status_code = status.HTTP_200_OK
+        mock_requests.return_value.json.return_value = {
+            "value": [{"content": "doc content"}]
+        }
+        mock_openai.return_value.choices[0].message.content = "AI response"
+
+        url = reverse("openai-response")
+        data = {"search_word": "search"}
         response = self.client.post(url, data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -97,16 +152,36 @@ class ThreadSummaryTest(APITestBase):
 
     @patch("rag_sample_app.views.generate_and_save_summary")
     def test_get_thread_summary(self, mock_generate_summary):
+        """スレッドのサマリーが正常に取得されることを確認するテスト"""
         mock_generate_summary.return_value = "Generated summary"
         url = reverse("thread-summary", args=[self.thread.id])
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("summary", response.data)
 
+    @patch("rag_sample_app.views.generate_and_save_summary")
+    def test_get_thread_summary_does_not_exist(self, mock_generate_summary):
+        """スレッドのサマリーが存在しない場合のテスト"""
+        mock_generate_summary.return_value = "Generated summary"
+        url = reverse("thread-summary", args=[DUMMY_THREAD_ID])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEquals(response.data, {"error": "Thread not found"})
+
+    def test_get_thread_summary_exists(self):
+        """スレッドのサマリーが既に存在する場合を確認するテスト"""
+        self.thread.summary = "test"
+        self.thread.save()
+        url = reverse("thread-summary", args=[self.thread.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {"summary": "test"})
+
 
 class CreateNewThreadTest(APITestBase):
     @patch("rag_sample_app.views.get_openai_response")
     def test_create_new_thread(self, mock_openai_response):
+        """新しいスレッドが正常に作成され、期待されるレスポンスが返されることを確認するテスト"""
         mock_openai_response.return_value = "Initial response"
         url = reverse("new-thread")
         response = self.client.post(url)
@@ -124,20 +199,11 @@ class DeleteThreadTest(APITestBase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
+    def test_delete_thread_does_not_found(self):
 
-class LogoutViewTest(APITestBase):
-    @patch("rag_sample_app.views.RefreshToken")
-    def test_logout_view(self, mock_refresh_token):
-
-        url = reverse("logout")
-        response = self.client.post(url, {"refresh_token": "dummy-token"})
-
-        # Mock呼び出し確認
-        # RefreshToken が 1 回だけ呼ばれたことを確認し、 'dummy-token' が渡されたことを確認
-        mock_refresh_token.assert_called_once_with("dummy-token")
-        mock_refresh_token.return_value.blacklist.assert_called_once()
-        # レスポンス確認
-        self.assertEqual(response.status_code, status.HTTP_205_RESET_CONTENT)
+        url = reverse("delete-thread", args=[DUMMY_THREAD_ID])
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 class GetFirstMessageTest(APITestBase):
@@ -150,6 +216,13 @@ class GetFirstMessageTest(APITestBase):
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("response", response.data)
+
+    def test_thread_not_found(self):
+        """指定されたthread_idが見つからない場合404エラーを返すテスト"""
+        url = reverse("get-first-message", args=[DUMMY_THREAD_ID])
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 class LimitStringLengthTest(SimpleTestCase):
@@ -228,6 +301,7 @@ class GetOpenAIResponseTest(SimpleTestCase):
 
     @patch("rag_sample_app.views.openai.chat.completions.create")
     def test_get_openai_response(self, mock_openai_create):
+        """OpenAIのAPIレスポンスが正常に取得されることを確認するテスト"""
         # モックのレスポンスを設定
         mock_response = MagicMock()
         mock_response.choices[0].message.content = "AI response"
@@ -253,3 +327,65 @@ class GetOpenAIResponseTest(SimpleTestCase):
 
         # 関数の結果がモックされたレスポンスと一致するか確認
         self.assertEqual(result, "AI response")
+
+
+class AllThreadsTest(APITestBase):
+
+    def setUp(self):
+        super().setUp()
+        # テスト用のスレッドを作成
+        self.thread_with_summary = Thread.objects.create(
+            creator=self.user,
+            summary="Existing summary",
+            created_at="2023-09-10 10:00:00",
+        )
+
+        self.thread_without_summary = Thread.objects.create(
+            creator=self.user, summary="", created_at="2023-09-11 10:00:00"
+        )
+
+    @patch("rag_sample_app.views.generate_and_save_summary")
+    def test_get_all_threads_success(self, mock_generate_summary):
+        """ユーザーのスレッドを正しく取得できるテスト"""
+        mock_generate_summary.return_value = "Generated summary"  # サマリー生成のモック
+
+        url = reverse("all-threads")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # レスポンスデータの確認
+        threads = response.data["threads"]
+        self.assertEqual(len(threads), 2)
+
+        # 各スレッドのデータを検証
+        self.assertEqual(threads[0]["thread_id"], str(self.thread_without_summary.id))
+        self.assertEqual(threads[0]["summary"], "Generated summary")
+        self.assertEqual(
+            str(threads[0]["created_at"]), str(self.thread_without_summary.created_at)
+        )
+
+        self.assertEqual(threads[1]["thread_id"], str(self.thread_with_summary.id))
+        self.assertEqual(threads[1]["summary"], "Existing summary")
+        self.assertEqual(
+            str(threads[1]["created_at"]), str(self.thread_with_summary.created_at)
+        )
+
+    @patch("rag_sample_app.views.generate_and_save_summary")
+    def test_generate_summary_if_missing(self, mock_generate_summary):
+        """サマリーが存在しない場合、新たに生成されることをテスト"""
+        mock_generate_summary.return_value = "Generated summary"  # モックを利用して生成
+
+        url = reverse("all-threads")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # サマリーが生成されることを確認
+        threads = response.data["threads"]
+        self.assertEqual(
+            threads[0]["summary"], "Generated summary"
+        )  # サマリーが生成されている
+        mock_generate_summary.assert_called_once_with(
+            self.thread_without_summary
+        )  # サマリー生成関数が呼ばれたことを確認

@@ -7,15 +7,11 @@ from django.utils.decorators import method_decorator
 from dotenv import load_dotenv
 from rest_framework import generics, status
 from rest_framework.decorators import api_view
-from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import ChatHistory, Document, Thread
-from .serializers import ChatHistorySerializer, DocumentSerializer, UserSerializer
+from .serializers import ChatHistorySerializer, DocumentSerializer
 from .utils import jwt_required  # utils.pyからデコレータをインポート
 
 # 開発環境か本番環境かに応じてファイルを指定
@@ -82,7 +78,7 @@ def get_openai_response(message):
     return openai_response.choices[0].message.content
 
 
-class ChatHistoryListCreate(generics.ListCreateAPIView):
+class ChatHistoryList(generics.ListCreateAPIView):
     serializer_class = ChatHistorySerializer
 
     # dispatchメソッドにデコレータを適用
@@ -95,21 +91,19 @@ class ChatHistoryListCreate(generics.ListCreateAPIView):
         user = self.request.user
 
         try:
-            thread = Thread.objects.get(id=thread_id)
+            thread = Thread.objects.get(creator=user, id=thread_id)
         except Thread.DoesNotExist:
-            return Response({"error": "Thread not found"}, status=404)
-
-        # スレッドの作成者が現在のユーザーかどうかを確認
-        if thread.creator != user:
-            return Response(
-                {"error": "You do not have permission to access this thread"},
-                status=403,
-            )
+            return None
 
         return ChatHistory.objects.filter(thread_id=thread)
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
+        if queryset is None:
+            return Response(
+                {"error": "Thread not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -129,35 +123,34 @@ class OpenAIResponse(APIView):
     def post(self, request):
         search_word = request.data.get("search_word")
         if search_word is None:
-            return Response({"error": "search_word is required"}, status=400)
+            return Response(
+                {"error": "search_word is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
         thread_id = request.data.get("thread_id")  # thread_idを取得
+        user = request.user
         if thread_id:
             try:
-                thread = Thread.objects.get(id=thread_id)
+                thread = Thread.objects.get(creator=user, id=thread_id)
             except Thread.DoesNotExist:
-                return Response({"error": "Thread not found"}, status=404)
+                return Response(
+                    {"error": "Thread not found"}, status=status.HTTP_404_NOT_FOUND
+                )
         else:
-            thread = Thread.objects.create()
-            thread_id = str(thread.id)
-
-        user = request.user
-        # スレッドの作成者が現在のユーザーかどうかを確認
-        if thread.creator != user:
-            return Response(
-                {"error": "You do not have permission to access this thread"},
-                status=403,
-            )
+            thread = Thread.objects.create(creator=user)
 
         search_url = f"https://{search_service}.search.windows.net/indexes/{index}/docs"
         headers = {"Content-Type": "application/json", "api-key": api_key}
         params = {"api-version": "2021-04-30-Preview", "search": search_word}
         response = requests.get(search_url, headers=headers, params=params)
 
-        if response.status_code == 200:
+        if response.status_code == status.HTTP_200_OK:
             try:
                 results = response.json()
             except requests.exceptions.JSONDecodeError as e:
-                return Response({"error": "JSON decode error: " + str(e)}, status=500)
+                return Response(
+                    {"error": "JSON decode error: " + str(e)},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
         else:
             return Response(
                 {"error": f"Error {response.status_code}: {response.text}"},
@@ -231,10 +224,13 @@ class ThreadSummary(APIView):
 
     @method_decorator(jwt_required)
     def get(self, request, thread_id):
+        user = request.user
         try:
-            thread = Thread.objects.get(id=thread_id)
+            thread = Thread.objects.get(creator=user, id=thread_id)
         except Thread.DoesNotExist:
-            return Response({"error": "Thread not found"}, status=404)
+            return Response(
+                {"error": "Thread not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
         if not thread.summary:
             summary = generate_and_save_summary(thread)
@@ -248,7 +244,8 @@ class AllThreads(APIView):
 
     @method_decorator(jwt_required)
     def get(self, request):
-        threads = Thread.objects.filter(creator=request.user).order_by("-created_at")
+        user = request.user
+        threads = Thread.objects.filter(creator=user).order_by("-created_at")
         thread_data = []
         for thread in threads:
             if not thread.summary:
@@ -270,9 +267,6 @@ class AllThreads(APIView):
 @jwt_required
 def create_new_thread(request):
     user = request.user
-    if not user.is_authenticated:
-        return Response({"error": "User is not authenticated"}, status=403)
-
     response = get_openai_response(
         "こんにちは。面接に来た受験者に挨拶してください。自己紹介を促してください。"
     )
@@ -284,48 +278,16 @@ def create_new_thread(request):
     )
 
 
-class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-
-        # Add custom claims
-        token["username"] = user.username
-        return token
-
-
-class MyTokenObtainPairView(TokenObtainPairView):
-    serializer_class = MyTokenObtainPairSerializer
-
-
-class RegisterUser(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = UserSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
-            if user:
-                return Response(status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
 class DeleteThread(APIView):
 
     @method_decorator(jwt_required)
     def delete(self, request, thread_id):
+        user = request.user
         try:
-            thread = Thread.objects.get(id=thread_id)
+            thread = Thread.objects.get(creator=user, id=thread_id)
         except Thread.DoesNotExist:
             return Response(
                 {"error": "Thread not found"}, status=status.HTTP_404_NOT_FOUND
-            )
-
-        # スレッドの作成者が現在のユーザーかどうかを確認
-        if thread.creator != request.user:
-            return Response(
-                {"error": "You do not have permission to delete this thread"},
-                status=status.HTTP_403_FORBIDDEN,
             )
 
         thread.delete()
@@ -337,29 +299,14 @@ class DeleteThread(APIView):
 @jwt_required
 def get_first_message(request, thread_id):
     user = request.user
-    if not user.is_authenticated:
-        return Response({"error": "User is not authenticated"}, status=403)
+    # ユーザIDで絞り込み
+    response = Thread.objects.filter(creator=user, id=thread_id).first()
 
-    # thread_idがなければエラーを返す
-    if not thread_id:
-        return Response({"error": "thread_id is required"}, status=400)
+    if response is None:
+        return Response(
+            {"error": "the first message was not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
 
-    response = Thread.objects.filter(creator=user, id=thread_id).first().first_message
-
+    response = response.first_message
     return Response({"response": response})
-
-
-class LogoutView(APIView):
-    permission_classes = (IsAuthenticated,)
-
-    @method_decorator(jwt_required)
-    def post(self, request):
-        try:
-            refresh_token = request.data["refresh_token"]
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-
-            return Response(status=status.HTTP_205_RESET_CONTENT)
-        except Exception as e:
-            print(e)
-            return Response(status=status.HTTP_400_BAD_REQUEST)
