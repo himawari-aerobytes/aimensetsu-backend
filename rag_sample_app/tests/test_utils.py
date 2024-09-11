@@ -1,10 +1,10 @@
 import json  # 追加
 import os
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import jwt
 from django.contrib.auth import get_user_model
-from django.db import DatabaseError, IntegrityError
+from django.db import IntegrityError
 from django.http import JsonResponse
 from django.test import RequestFactory, TestCase
 from dotenv import load_dotenv
@@ -13,7 +13,7 @@ from rag_sample_app.utils import get_cognito_public_keys, jwt_required, load_env
 
 User = get_user_model()
 
-SAMPLE_TOKEN = "eyJraWQiOiIxMjM0ZXhhbXBsZT0iLCJhbGciOiJSUzI1NiIsImt0eSI6IlJTQSIsImUiOiJBUUFCIiwibiI6IjEyMzQ1Njc4OTAiLCJ1c2UiOiJzaWcifQ.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.qpldgWTqr6dA_vZCZcmnJgV7JPanhBzEloQA9CQuyLMLfi9u1T0y8Kr6uK4j-WiDHvqtzo5zoFBuwqO-o1adnAnTKmqKj2RHU3bXqXKtawLkMC-E_cwGrr_XBQQSMnfw8OX2C8tFr5nxr1Bi8KD2G4T4_9pqv6fz3STDTPeMOSZ-kx-p2lJYJVexxPfSg1j69Yc5Jd6nT7eJakzu09CTwcBdlKMGMgfKjzuUPWWc9gnO21PQgYPTP8UAohM_mvNyejYRlrluJBrG01faOj_WMpLR2rv9tg0s-HdjoR3FGlmMnJnssu3v5YF1wnPS2HPNaAZuu_12NDR5BjH_ulOiXA"  # gitleaks:allow
+DUMMY_TOKEN = "eyJraWQiOiIxMjM0ZXhhbXBsZT0iLCJhbGciOiJSUzI1NiIsImt0eSI6IlJTQSIsImUiOiJBUUFCIiwibiI6IjEyMzQ1Njc4OTAiLCJ1c2UiOiJzaWcifQ.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.qpldgWTqr6dA_vZCZcmnJgV7JPanhBzEloQA9CQuyLMLfi9u1T0y8Kr6uK4j-WiDHvqtzo5zoFBuwqO-o1adnAnTKmqKj2RHU3bXqXKtawLkMC-E_cwGrr_XBQQSMnfw8OX2C8tFr5nxr1Bi8KD2G4T4_9pqv6fz3STDTPeMOSZ-kx-p2lJYJVexxPfSg1j69Yc5Jd6nT7eJakzu09CTwcBdlKMGMgfKjzuUPWWc9gnO21PQgYPTP8UAohM_mvNyejYRlrluJBrG01faOj_WMpLR2rv9tg0s-HdjoR3FGlmMnJnssu3v5YF1wnPS2HPNaAZuu_12NDR5BjH_ulOiXA"  # gitleaks:allow
 JWKS_MOCK_RESPONSE = {
     "keys": [
         {
@@ -63,7 +63,7 @@ class JWTRequiredDecoratorTest(TestCase):
     @patch("rag_sample_app.utils.get_cognito_public_keys")
     def test_invalid_token_type(self, mock_get_cognito_public_keys):
         request = self.factory.get(
-            "/api/some-endpoint/", HTTP_AUTHORIZATION="Basic " + SAMPLE_TOKEN
+            "/api/some-endpoint/", HTTP_AUTHORIZATION="Basic " + DUMMY_TOKEN
         )
         response = jwt_required(lambda r: JsonResponse({"success": "True"}))(request)
         self.assertEqual(response.status_code, 401)
@@ -75,7 +75,7 @@ class JWTRequiredDecoratorTest(TestCase):
     def test_expired_token(self, mock_get_cognito_public_keys, mock_jwt_decode):
         mock_jwt_decode.side_effect = jwt.ExpiredSignatureError()
         request = self.factory.get(
-            "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + SAMPLE_TOKEN
+            "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + DUMMY_TOKEN
         )
         response = jwt_required(lambda r: JsonResponse({"success": "True"}))(request)
         self.assertEqual(response.status_code, 401)
@@ -110,7 +110,7 @@ class JWTRequiredDecoratorTest(TestCase):
         mock_get_cognito_public_keys.return_value = {"1234example=": "test"}
 
         request = self.factory.get(
-            "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + SAMPLE_TOKEN
+            "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + DUMMY_TOKEN
         )
 
         # 初期ユーザーデータの存在確認
@@ -148,7 +148,7 @@ class JWTRequiredDecoratorTest(TestCase):
         )
 
         request = self.factory.get(
-            "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + SAMPLE_TOKEN
+            "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + DUMMY_TOKEN
         )
 
         # デコレータ適用後のレスポンス
@@ -175,7 +175,7 @@ class JWTRequiredDecoratorTest(TestCase):
         mock_get_cognito_public_keys.return_value = {"invalid_key": "test"}
 
         request = self.factory.get(
-            "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + SAMPLE_TOKEN
+            "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + DUMMY_TOKEN
         )
 
         # 初期ユーザーデータの存在確認
@@ -213,7 +213,7 @@ class JWTRequiredDecoratorTest(TestCase):
 
             # リクエストを作成
             request = self.factory.get(
-                "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + SAMPLE_TOKEN
+                "/api/some-endpoint/", HTTP_AUTHORIZATION="Bearer " + DUMMY_TOKEN
             )
 
             # デコレータ適用後のレスポンスを取得
