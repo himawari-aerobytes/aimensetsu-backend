@@ -5,10 +5,11 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from requests.exceptions import JSONDecodeError
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from rag_sample_app.models import Document, Thread
+from rag_sample_app.models import ChatHistory, Document, Thread
 
 DUMMY_THREAD_ID = "e554463c-05e3-e0a1-60fe-8f1805a223eb"  # gitleaks:allow
 
@@ -139,6 +140,76 @@ class OpenAIResponseTest(APITestBase):
 
         url = reverse("openai-response")
         data = {"search_word": "search"}
+        response = self.client.post(url, data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("response", response.data)
+
+    @patch("requests.get")
+    def test_json_decode_error(self, mock_get):
+        """response.json()でJSONDecodeErrorが発生した場合のテスト"""
+
+        # requests.getのモックレスポンスを設定
+        mock_response = MagicMock()
+        mock_response.status_code = status.HTTP_200_OK
+        # response.json()が呼ばれた時にJSONDecodeErrorを発生させる
+        mock_response.json.side_effect = JSONDecodeError("Expecting value", "", 0)
+        mock_get.return_value = mock_response
+
+        url = reverse("openai-response")
+        data = {"search_word": "search", "thread_id": self.thread.id}
+        response = self.client.post(url, data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn("error", response.data)
+
+    @patch("requests.get")
+    def test_search_service_error(self, mock_get):
+        """searchserviceで異常ステータスが帰ってきた場合のテスト"""
+
+        # requests.getのモックレスポンスを設定
+        mock_response = MagicMock()
+        mock_response.status_code = status.HTTP_404_NOT_FOUND
+        mock_get.return_value = mock_response
+
+        url = reverse("openai-response")
+        data = {"search_word": "search", "thread_id": self.thread.id}
+        response = self.client.post(url, data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data)
+
+    @patch("requests.get")
+    @patch("openai.chat.completions.create")
+    def test_post_openai_response_value_field_missing(self, mock_openai, mock_requests):
+        """検索サービスのレスポンスにvalueフィールドが存在しない場合に正しく動作するかを確認するテスト"""
+        mock_requests.return_value.status_code = status.HTTP_200_OK
+        mock_requests.return_value.json.return_value = {"value": []}
+        mock_openai.return_value.choices[0].message.content = "AI response"
+
+        url = reverse("openai-response")
+        data = {"search_word": "search", "thread_id": self.thread.id}
+        response = self.client.post(url, data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("response", response.data)
+
+    @patch("requests.get")
+    @patch("openai.chat.completions.create")
+    def test_post_exits_chat_history(self, mock_openai, mock_requests):
+        """検索サービスのレスポンスにvalueフィールドが存在しない場合に正しく動作するかを確認するテスト"""
+        mock_requests.return_value.status_code = status.HTTP_200_OK
+        mock_requests.return_value.json.return_value = {"value": []}
+        mock_openai.return_value.choices[0].message.content = "AI response"
+        ChatHistory.objects.create(
+            thread_id=self.thread, sender="AI", message="AI_TEST"
+        )
+        ChatHistory.objects.create(
+            thread_id=self.thread, sender="USER", message="USER_TEST"
+        )
+
+        url = reverse("openai-response")
+        data = {"search_word": "search", "thread_id": self.thread.id}
         response = self.client.post(url, data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
