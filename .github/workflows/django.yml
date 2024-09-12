@@ -26,24 +26,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     - name: Run Tests
-      env:
-        API_KEY: ${{ secrets.API_KEY }}
-        SEARCH_SERVICE: ${{ secrets.SEARCH_SERVICE }}
-        INDEX: ${{ secrets.INDEX }}
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        OPENAI_DEPLOYMENT_NAME: ${{ secrets.OPENAI_DEPLOYMENT_NAME }}
-        OPENAI_RESOURCE_NAME: ${{ secrets.OPENAI_RESOURCE_NAME }}
-        OPENAI_API_VERSION: ${{ secrets.OPENAI_API_VERSION }}
-        DB_NAME: ${{ secrets.DB_NAME }}
-        DB_USER: ${{ secrets.DB_USER }}
-        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        DB_HOST: ${{ secrets.DB_HOST }}
-        CORS_DOMAIN: ${{ secrets.CORS_DOMAIN }}
-        COGNITO_DOMAIN: ${{ secrets.COGNITO_DOMAIN }}
-        COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
-        COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
-        DEBUG: ${{ secrets.DEBUG }}
-        DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
       run: |
         echo "${{ secrets.ENVIRONMENTS }}" > .env.development
         python manage.py test
