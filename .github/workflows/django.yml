@@ -44,6 +44,6 @@ jobs:
         COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
         DEBUG: ${{ secrets.DEBUG }}
         DJANGO_ALLOWED_HOSTS: ${{ secrets.DJANGO_ALLOWED_HOSTS }}
-        SECRET_KEY: ${{ secrets.SECRET_KEY }}
       run: |
+        export DJANGO_SECRET_KEY="$(base64 <<< "$RANDOM|TeStiNg|$RANDOM" | tr -d '\n')"
         python manage.py test
