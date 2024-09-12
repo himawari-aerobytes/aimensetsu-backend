@@ -26,8 +26,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     - name: Run Tests
-      environment:
-        name: development
+      environment: development
       run: |
         echo "${{ secrets.ENVIRONMENTS }}" > .env.development
         python manage.py test
