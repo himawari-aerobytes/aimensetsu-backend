@@ -19,6 +19,7 @@ def load_environment():
         load_dotenv(".env.development")
 
 
+load_environment()
 User = get_user_model()  # Djangoのユーザーモデルを取得
 
 COGNITO_REGION = "ap-northeast-1"
@@ -44,7 +45,7 @@ def get_cognito_public_keys():
 def jwt_required(view_func):
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
-        load_environment()
+
         auth_header = request.META.get("HTTP_AUTHORIZATION", None)
         if not auth_header:
             return JsonResponse({"error": "Authorization header missing"}, status=401)
