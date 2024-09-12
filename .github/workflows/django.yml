@@ -1,6 +1,13 @@
 name: Django CI
 
-on: [pull_request, push, workflow_dispatch]
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
