@@ -29,6 +29,7 @@ from rag_sample_app.views import (
     generate_and_save_summary,
     get_openai_response,
     limit_string_length,
+    load_environment,
 )
 
 
@@ -460,3 +461,42 @@ class AllThreadsTest(APITestBase):
         mock_generate_summary.assert_called_once_with(
             self.thread_without_summary
         )  # サマリー生成関数が呼ばれたことを確認
+
+
+class EnvironmentTest(TestCase):
+    # 環境変数のテスト
+    @patch("os.getenv")
+    @patch("rag_sample_app.views.load_dotenv")
+    def test_load_production_env(self, mock_load_dotenv, mock_getenv):
+        # ENVが"production"であることをシミュレート
+        mock_getenv.return_value = "production"
+
+        # テスト対象のコードを実行
+        load_environment()
+
+        # 正しいファイルが読み込まれたか確認
+        mock_load_dotenv.assert_called_once_with(".env.production")
+
+    @patch("os.getenv")
+    @patch("rag_sample_app.views.load_dotenv")
+    def test_load_development_env(self, mock_load_dotenv, mock_getenv):
+        # ENVが設定されていない（デフォルトは "development"）
+        mock_getenv.return_value = None
+
+        # テスト対象のコードを実行
+        load_environment()
+
+        # 正しいファイルが読み込まれたか確認
+        mock_load_dotenv.assert_called_once_with(".env.development")
+
+    @patch("os.getenv")
+    @patch("rag_sample_app.views.load_dotenv")
+    def test_load_staging_env(self, mock_load_dotenv, mock_getenv):
+        # ENVが"staging"であることをシミュレート
+        mock_getenv.return_value = "staging"
+
+        # テスト対象のコードを実行
+        load_environment()
+
+        # 正しいファイルが読み込まれたか確認
+        mock_load_dotenv.assert_called_once_with(".env.development")

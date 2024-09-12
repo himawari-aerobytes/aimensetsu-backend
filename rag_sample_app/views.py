@@ -14,12 +14,17 @@ from .models import ChatHistory, Document, Thread
 from .serializers import ChatHistorySerializer, DocumentSerializer
 from .utils import jwt_required  # utils.pyからデコレータをインポート
 
-# 開発環境か本番環境かに応じてファイルを指定
-environment = os.getenv("ENV", "development")
-if environment == "production":
-    load_dotenv(".env.production")
-else:
-    load_dotenv(".env.development")
+
+def load_environment():
+    # 開発環境か本番環境かに応じてファイルを指定
+    environment = os.getenv("ENV", "development")
+    if environment == "production":
+        load_dotenv(".env.production")
+    else:
+        load_dotenv(".env.development")
+
+
+load_environment()
 
 # 環境変数の取得
 api_key = os.getenv("API_KEY")
