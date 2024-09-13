@@ -22,11 +22,10 @@ jobs:
         uses: google-github-actions/setup-gcloud@v1
         with:
           project_id: 'aimensetsu'  # あなたの GCP プロジェクト ID
-          install_components: docker
 
       - name: Docker の認証情報を設定
         run: |
-          gcloud auth configure-docker --quiet
+          gcloud auth configure-docker asia-northeast1-docker.pkg.dev --quiet
 
       - name: Docker イメージをビルド
         run: |
