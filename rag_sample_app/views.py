@@ -35,6 +35,7 @@ aoai_service_name = os.getenv("OPENAI_RESOURCE_NAME")
 aoai_deployment_name = os.getenv("OPENAI_DEPLOYMENT_NAME")
 aoai_resource_name = os.environ.get("OPENAI_RESOURCE_NAME")
 aoai_api_version = os.getenv("OPENAI_API_VERSION")
+aoai_model = os.getenv("OPENAI_MODEL")
 SENDER_NAME_AI = "AI"
 
 # OpenAI APIの設定
@@ -78,7 +79,7 @@ def get_openai_response(message):
     ]
     messages.append({"role": "user", "content": message})
     openai_response = openai.chat.completions.create(
-        model="gpt-3.5-turbo", messages=messages
+        model=aoai_model, messages=messages
     )
     return openai_response.choices[0].message.content
 
@@ -202,7 +203,7 @@ class OpenAIResponse(APIView):
         messages.append({"role": "user", "content": prompt})
 
         openai_response = openai.chat.completions.create(
-            model="gpt-35-turbo", messages=messages
+            model=aoai_model, messages=messages
         )
 
         response = openai_response.choices[0].message.content

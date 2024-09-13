@@ -1,6 +1,6 @@
 from functools import wraps
 from unittest import mock
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase
@@ -394,7 +394,7 @@ class GetOpenAIResponseTest(SimpleTestCase):
 
         # モックの呼び出しを検証
         mock_openai_create.assert_called_once_with(
-            model="gpt-3.5-turbo", messages=expected_messages
+            model=ANY, messages=expected_messages
         )
 
         # 関数の結果がモックされたレスポンスと一致するか確認
