@@ -17,12 +17,16 @@ jobs:
         uses: google-github-actions/auth@v1
         with:
           credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}'
-          setup-docker: true
 
       - name: Google Cloud SDK を設定
         uses: google-github-actions/setup-gcloud@v1
         with:
-          project_id: 'aimensetsu'
+          project_id: 'aimensetsu'  # あなたの GCP プロジェクト ID
+          install_components: docker
+
+      - name: Docker の認証情報を設定
+        run: |
+          gcloud auth configure-docker --quiet
 
       - name: Docker イメージをビルド
         run: |
