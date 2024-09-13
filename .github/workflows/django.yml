@@ -32,6 +32,3 @@ jobs:
       run: |
         echo "${{ secrets.ENVIRONMENTS }}" > .env.development
         python manage.py test
-    - name: 一時ファイルを削除
-      run: |
-        rm .env.deployment
