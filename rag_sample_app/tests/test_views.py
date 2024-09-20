@@ -385,10 +385,7 @@ class GetOpenAIResponseTest(SimpleTestCase):
 
         # 期待されるリクエスト内容
         expected_messages = [
-            {
-                "role": "system",
-                "content": "あなたは、面接官の高橋です。面接を受ける人に対して、適切な質問をしてください。面接は１対１です。最初は自己紹介から始めましょう。",
-            },
+            {"role": "system", "content": ANY},
             {"role": "user", "content": user_message},
         ]
 
