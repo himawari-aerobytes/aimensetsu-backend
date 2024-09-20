@@ -1,5 +1,6 @@
 import datetime
 import os
+import random
 
 import openai
 import requests
@@ -70,11 +71,21 @@ def generate_and_save_summary(thread):
     return user_input
 
 
+# 3つの名前からランダムに選択する関数
+def choose_random_name():
+    names = ["高階", "渡海", "佐伯", "藤原", "西崎", "世良", "猫田"]
+    return random.choice(names)
+
+
+# 実行例
+choose_random_name()
+
+
 def get_openai_response(message):
     messages = [
         {
             "role": "system",
-            "content": "あなたは、面接官の高橋です。面接を受ける人に対して、適切な質問をしてください。面接は１対１です。最初は自己紹介から始めましょう。",
+            "content": f"あなたは、面接官の{choose_random_name()}です。面接を受ける人に対して、適切な質問をしてください。面接は１対１です。最初は自己紹介から始めましょう。",
         }
     ]
     messages.append({"role": "user", "content": message})
